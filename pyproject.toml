@@ -1,0 +1,13 @@
+[project]
+name = "bfsdataacqrgb"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "keyboard>=0.13.5",
+    "matplotlib>=3.10.8",
+    "h5py>=3.10.0",
+    "numpy>=1.26.0",
+    "pylsl>=1.16.0",
+]
