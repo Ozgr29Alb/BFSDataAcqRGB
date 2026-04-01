@@ -9,7 +9,7 @@
 # =============================================================================
 
 import PySpin
-from config import TriggerType, TRIGGER_TYPE
+from config import TriggerType, TRIGGER_TYPE, WIDTH, HEIGHT, ACQUISITION_FPS, ADC_BIT_DEPTH
 
 
 # =============================================================================
@@ -18,11 +18,30 @@ from config import TriggerType, TRIGGER_TYPE
 
 def configure_image_format(nodemap):
     """
-    Sets the camera pixel format, width, and height to their sensor maximums.
+    Configures pixel format, resolution (ROI), frame rate, and ADC bit depth.
 
-    The BFS sensor outputs raw Bayer-pattern data. We set PixelFormat to
-    BayerRG8 (raw mosaic) and debayer to RGB8 in software via ImageProcessor.
+    Pixel format
+    ------------
+    The BFS sensor outputs raw Bayer-pattern data. PixelFormat is set to
+    BayerRG8 (raw mosaic); software debayering to RGB8 happens in ImageProcessor.
     This keeps USB/GigE bandwidth low while still producing full-colour output.
+
+    Resolution
+    ----------
+    WIDTH / HEIGHT from config.py control the Region of Interest.
+    None → sensor maximum (WidthMax / HeightMax).
+    Values are clamped and snapped to the camera's increment (usually 1 or 8 px).
+
+    Frame rate
+    ----------
+    AcquisitionFrameRateEnable must be True before AcquisitionFrameRate is
+    writable. The resulting rate may be lower than requested if the exposure
+    time is too long; check AcquisitionResultingFrameRate after BeginAcquisition.
+
+    ADC bit depth
+    -------------
+    AdcBitDepth controls the sensor's A/D converter precision.
+    None → leave at camera default.
 
     :param nodemap: GenICam nodemap from cam.GetNodeMap()
     :return: True if successful
@@ -45,22 +64,78 @@ def configure_image_format(nodemap):
             print("[FORMAT] ERROR: No 8-bit Bayer format available.")
             return False
 
-        # --- Width and Height: sensor maximum ---
+        # --- Width ---
         node_width = PySpin.CIntegerPtr(nodemap.GetNode('Width'))
         if PySpin.IsReadable(node_width) and PySpin.IsWritable(node_width):
-            node_width.SetValue(node_width.GetMax())
-            print(f"[FORMAT] Width  → {node_width.GetValue()} px")
+            w_max = node_width.GetMax()
+            w_min = node_width.GetMin()
+            w_inc = node_width.GetInc()
+            if WIDTH is None:
+                target_w = w_max
+            else:
+                target_w = max(w_min, min(w_max, int(WIDTH)))
+                # snap to nearest valid increment
+                target_w = w_min + ((target_w - w_min) // w_inc) * w_inc
+            node_width.SetValue(target_w)
+            print(f"[FORMAT] Width  → {node_width.GetValue()} px  (max={w_max})")
+        else:
+            print("[FORMAT] WARNING: Width node not writable — using current value.")
 
+        # --- Height ---
         node_height = PySpin.CIntegerPtr(nodemap.GetNode('Height'))
         if PySpin.IsReadable(node_height) and PySpin.IsWritable(node_height):
-            node_height.SetValue(node_height.GetMax())
-            print(f"[FORMAT] Height → {node_height.GetValue()} px")
+            h_max = node_height.GetMax()
+            h_min = node_height.GetMin()
+            h_inc = node_height.GetInc()
+            if HEIGHT is None:
+                target_h = h_max
+            else:
+                target_h = max(h_min, min(h_max, int(HEIGHT)))
+                target_h = h_min + ((target_h - h_min) // h_inc) * h_inc
+            node_height.SetValue(target_h)
+            print(f"[FORMAT] Height → {node_height.GetValue()} px  (max={h_max})")
+        else:
+            print("[FORMAT] WARNING: Height node not writable — using current value.")
 
-        # --- Offsets: zero so we capture the full sensor area ---
+        # --- Offsets: zero so we capture the full configured area ---
         for name in ('OffsetX', 'OffsetY'):
             node = PySpin.CIntegerPtr(nodemap.GetNode(name))
             if PySpin.IsReadable(node) and PySpin.IsWritable(node):
                 node.SetValue(node.GetMin())
+
+        # --- ADC bit depth ---
+        if ADC_BIT_DEPTH is not None:
+            node_adc = PySpin.CEnumerationPtr(nodemap.GetNode('AdcBitDepth'))
+            if PySpin.IsReadable(node_adc) and PySpin.IsWritable(node_adc):
+                entry = PySpin.CEnumEntryPtr(node_adc.GetEntryByName(ADC_BIT_DEPTH))
+                if PySpin.IsReadable(entry):
+                    node_adc.SetIntValue(entry.GetValue())
+                    print(f"[FORMAT] AdcBitDepth → {ADC_BIT_DEPTH}")
+                else:
+                    print(f"[FORMAT] WARNING: AdcBitDepth '{ADC_BIT_DEPTH}' not available on this camera.")
+            else:
+                print("[FORMAT] WARNING: AdcBitDepth node not writable.")
+
+        # --- Frame rate: enable control, then set target ---
+        node_fps_enable = PySpin.CBooleanPtr(nodemap.GetNode('AcquisitionFrameRateEnable'))
+        if PySpin.IsReadable(node_fps_enable) and PySpin.IsWritable(node_fps_enable):
+            node_fps_enable.SetValue(True)
+            print("[FORMAT] AcquisitionFrameRateEnable → True")
+        else:
+            print("[FORMAT] WARNING: AcquisitionFrameRateEnable not accessible — "
+                  "frame rate may be exposure-limited.")
+
+        node_fps = PySpin.CFloatPtr(nodemap.GetNode('AcquisitionFrameRate'))
+        if PySpin.IsReadable(node_fps) and PySpin.IsWritable(node_fps):
+            fps_max = node_fps.GetMax()
+            fps_min = node_fps.GetMin()
+            target_fps = max(fps_min, min(fps_max, float(ACQUISITION_FPS)))
+            node_fps.SetValue(target_fps)
+            print(f"[FORMAT] AcquisitionFrameRate → {target_fps:.2f} fps  "
+                  f"(range: {fps_min:.1f}–{fps_max:.1f})")
+        else:
+            print("[FORMAT] WARNING: AcquisitionFrameRate not writable — "
+                  "camera will use its current frame rate.")
 
     except PySpin.SpinnakerException as ex:
         print(f"[FORMAT] Error: {ex}")
@@ -80,7 +155,7 @@ def configure_trigger(nodemap):
     SOFTWARE mode: trigger stays Off; camera free-runs on BeginAcquisition().
     HARDWARE mode: TriggerSelector=AcquisitionStart, TriggerSource=Line0.
                    One rising-edge pulse on GPIO Line0 starts the acquisition;
-                   the camera then free-runs at AcquisitionFrameRate.
+                   the camera then free-runs at ACQUISITION_FPS.
 
     :param nodemap: GenICam nodemap from cam.GetNodeMap()
     :return: True if successful
