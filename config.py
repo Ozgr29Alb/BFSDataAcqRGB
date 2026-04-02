@@ -80,18 +80,30 @@ QUEUE_MAXSIZE  = 128    # frames   (tune to your available RAM)
 
 
 # ---------------------------------------------------------------------------
+VIDEO_FORMAT  = "NONE"    # "H264_MP4"    # "NONE" | "UNCOMPRESSED" | "MJPG" | "H264_AVI" | "H264_MP4"
+VIDEO_BITRATE = 4_000_000     # Ignored when CRF is active
+VIDEO_CRF     = 27            # H264 quality (0-51). Lower = better quality/huge file.
+                              # 23 = ~1.9 GB/2min (too big). 30 = blurry. 27 is the sweet spot.
+
+# ---------------------------------------------------------------------------
+# Live Preview
+# ---------------------------------------------------------------------------
+# Displays a real-time OpenCV window of the camera feed.
+# The preview is rendered at a lower framerate and scale to guarantee 
+# that the camera doesn't lag and drop frames during the actual recording.
+SHOW_PREVIEW      = True
+PREVIEW_DOWNSCALE = 2   # Downscale factor (2 = 50% size, so 1920x1200 -> 960x600)
+
+# ---------------------------------------------------------------------------
 # Output
 # ---------------------------------------------------------------------------
 OUTPUT_DIR   = "output"       # folder where video + sidecar files are saved
-VIDEO_FORMAT = "H264_MP4"     # "UNCOMPRESSED" | "MJPG" | "H264_AVI" | "H264_MP4"
-VIDEO_BITRATE = 4_000_000     # H264 bitrate in bits/sec (4 Mbps ≈ 1.8 GB/hr)
-VIDEO_CRF     = 23            # H264 quality: lower = better (0–51); ignored when
-                              #   bitrate is the primary control on SpinVideo
 
 # HDF5 export: disabled by default for long recordings.
 # ~1.8 GB MP4 vs ~135-225 GB HDF5 for 1 hour at 1080p/30fps.
-# Set True only for short sessions where per-frame random access is needed.
-SAVE_HDF5         = False
+# Set True only for short sessions where per-frame random access is needed or video is skipped.
+SAVE_HDF5         = True  # False
+HDF5_COMPRESSION  = False # True      # True = gzip compression. False = raw (faster, huge size).
 HDF5_CHUNK_FRAMES = 32        # frames per HDF5 chunk (tune for your SSD)
 
 
