@@ -85,7 +85,7 @@ QUEUE_MAXSIZE  = 128    # frames   (tune to your available RAM)
 OUTPUT_DIR   = "output"       # folder where video + sidecar files are saved
 VIDEO_FORMAT = "H264_MP4"     # "UNCOMPRESSED" | "MJPG" | "H264_AVI" | "H264_MP4"
 VIDEO_BITRATE = 4_000_000     # H264 bitrate in bits/sec (4 Mbps ≈ 1.8 GB/hr)
-VIDEO_CRF     = 23            # H264 quality: lower = better (0–51); ignored when
+VIDEO_CRF     = 0            # H264 quality: lower = better (0–51); ignored when
                               #   bitrate is the primary control on SpinVideo
 
 # HDF5 export: disabled by default for long recordings.
