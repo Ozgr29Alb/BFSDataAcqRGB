@@ -42,7 +42,7 @@ except ImportError:
 
 from config import (
     OUTPUT_DIR, VIDEO_FORMAT, VIDEO_BITRATE, VIDEO_CRF,
-    SAVE_HDF5, HDF5_CHUNK_FRAMES,
+    SAVE_HDF5, HDF5_COMPRESSION, HDF5_CHUNK_FRAMES,
     TRIGGER_TYPE, TriggerType, ACQUISITION_FPS,
 )
 
@@ -131,9 +131,9 @@ class StreamWriter:
             fps = ACQUISITION_FPS
         print(f"[WRITER] Video FPS: {fps:.2f}")
 
-        # --- SpinVideo recorder (skipped in test/no-camera mode) ---
+        # --- SpinVideo recorder (skipped in test/no-camera mode or if "NONE") ---
         h, w = self._height, self._width
-        if _PYSPIN_AVAILABLE:
+        if _PYSPIN_AVAILABLE and VIDEO_FORMAT != "NONE":
             self._video_recorder = PySpin.SpinVideo()
 
             if VIDEO_FORMAT == "UNCOMPRESSED":
@@ -164,6 +164,8 @@ class StreamWriter:
             self._video_recorder.Open(self._base_name, option)
             ext = ".mp4" if VIDEO_FORMAT == "H264_MP4" else ".avi"
             print(f"[WRITER] Video opened → {self._base_name}{ext}")
+        elif VIDEO_FORMAT == "NONE":
+            print("[WRITER] VIDEO_FORMAT is 'NONE' — video encoder skipped.")
         else:
             print("[WRITER] PySpin not available — video encoder skipped (timestamps + HDF5 only).")
 
@@ -183,17 +185,26 @@ class StreamWriter:
         )
         self._hdf5_file = h5py.File(hdf5_path, 'w')
 
-        # Resizable dataset: starts at 0 frames, expands per chunk
+        # Resizable dataset: starts at 0 frames, expands per chunk.
+        # No compression — uncompressed writes have zero CPU overhead per frame,
+        # which is important when streaming high-res RGB at 30+ fps.
+        # Chunking is still required for resizable datasets and gives fast
+        # per-frame seeking (one chunk = HDF5_CHUNK_FRAMES frames on disk).
         chunk_shape = (HDF5_CHUNK_FRAMES, h, w, 3)
-        self._hdf5_ds = self._hdf5_file.create_dataset(
-            'frames',
-            shape=(0, h, w, 3),
-            maxshape=(None, h, w, 3),
-            dtype=np.uint8,
-            compression='gzip',
-            compression_opts=4,
-            chunks=chunk_shape,
-        )
+        kwargs = {
+            'name': 'frames',
+            'shape': (0, h, w, 3),
+            'maxshape': (None, h, w, 3),
+            'dtype': np.uint8,
+            'chunks': chunk_shape,
+        }
+        
+        if HDF5_COMPRESSION:
+            kwargs['compression'] = 'gzip'
+            kwargs['compression_opts'] = 4
+            
+        self._hdf5_ds = self._hdf5_file.create_dataset(**kwargs)
+        
         self._hdf5_ds.attrs['channel_order'] = 'RGB'
         self._hdf5_ds.attrs['description']   = 'Debayered RGB frames. Shape: (N, H, W, 3).'
 

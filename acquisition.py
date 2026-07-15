@@ -37,10 +37,17 @@ import numpy as np
 import PySpin
 import keyboard
 
+try:
+    import cv2
+    _CV2_AVAILABLE = True
+except ImportError:
+    _CV2_AVAILABLE = False
+
 from config import (
     TRIGGER_TYPE, TriggerType,
     STOP_KEY, MAX_DURATION_S, QUEUE_MAXSIZE,
     GRAB_TIMEOUT_MS, COLOR_ALGO,
+    SHOW_PREVIEW, PREVIEW_DOWNSCALE,
 )
 from lsl_markers import lsl_push
 
@@ -217,6 +224,27 @@ def acquire_frames(cam, nodemap, writer, lsl_outlet=None, serial="UNKNOWN"):
             print("[ACQ] Writer thread error — stopping acquisition.")
             stop_event.set()
 
+        # -------------------------------------------------------------------
+        # OpenCV Live Preview (Rendered at ~10 FPS to preserve CPU/RAM bandwith)
+        # -------------------------------------------------------------------
+        if SHOW_PREVIEW and _CV2_AVAILABLE and (frame_count % 3 == 0):
+            try:
+                # ndarray is RGB. OpenCV expects BGR.
+                bgr = cv2.cvtColor(ndarray, cv2.COLOR_RGB2BGR)
+                if PREVIEW_DOWNSCALE > 1:
+                    h, w = bgr.shape[:2]
+                    bgr = cv2.resize(bgr, (w // PREVIEW_DOWNSCALE, h // PREVIEW_DOWNSCALE))
+                
+                window_name = f"Preview - {serial}"
+                cv2.imshow(window_name, bgr)
+                
+                # waitKey processes window events. 1ms is enough.
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    print("\n[ACQ] 'q' pressed in preview window — stopping...")
+                    stop_event.set()
+            except Exception as e:
+                print(f"[ACQ] Preview error: {e}")
+
     # -----------------------------------------------------------------------
     # Graceful shutdown
     # -----------------------------------------------------------------------
@@ -232,5 +260,8 @@ def acquire_frames(cam, nodemap, writer, lsl_outlet=None, serial="UNKNOWN"):
     print(f"\n[ACQ] Stopped. {frame_count} frames captured | "
           f"{frames_written[0]} frames written | "
           f"{elapsed:.1f} s | {fps_actual:.1f} fps actual.")
+
+    if SHOW_PREVIEW and _CV2_AVAILABLE:
+        cv2.destroyAllWindows()
 
     return frames_written[0] > 0
