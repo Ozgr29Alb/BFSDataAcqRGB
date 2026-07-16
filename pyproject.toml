@@ -10,4 +10,5 @@ dependencies = [
     "h5py>=3.10.0",
     "numpy>=1.26.0",
     "pylsl>=1.16.0",
+    "ffmpeg>=1.4",
 ]

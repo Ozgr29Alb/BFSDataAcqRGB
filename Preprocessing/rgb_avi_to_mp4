@@ -1,0 +1,183 @@
+from pathlib import Path
+import subprocess
+import datetime
+import time
+
+
+# -----------------------------
+# Configuration
+# -----------------------------
+
+FFMPEG = r"C:\Users\User\Downloads\ffmpeg-7.1-full_build\bin\ffmpeg.exe"
+
+# Input folder containing AVI files
+input_root = Path(r"D:\Data_RGB\catherine\first")
+
+# Separate output folder for MP4 files
+output_root = Path(r"D:\Data_RGB\catherine\first_mp4")
+
+
+# -----------------------------
+# Logging
+# -----------------------------
+
+log_file = output_root / "avi_to_mp4_conversion.log"
+
+
+def log(message):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    text = f"[{timestamp}] {message}"
+
+    print(text)
+
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(text + "\n")
+
+
+# -----------------------------
+# Safety checks
+# -----------------------------
+
+if not Path(FFMPEG).exists():
+    raise FileNotFoundError(
+        f"FFmpeg not found:\n{FFMPEG}"
+    )
+
+if not input_root.exists():
+    raise FileNotFoundError(
+        f"Input folder does not exist:\n{input_root}"
+    )
+
+# Create output folder
+output_root.mkdir(parents=True, exist_ok=True)
+
+
+avi_files = sorted(input_root.rglob("*.avi"))
+
+if len(avi_files) == 0:
+    raise RuntimeError(
+        f"No AVI files found in:\n{input_root}"
+    )
+
+
+log(f"Found {len(avi_files)} AVI files")
+log(f"Input : {input_root}")
+log(f"Output: {output_root}")
+log("--------------------------------")
+
+
+# -----------------------------
+# Conversion loop
+# -----------------------------
+
+successful = 0
+failed = 0
+skipped = 0
+
+
+for index, avi in enumerate(avi_files, start=1):
+
+    # Create output filename
+    mp4 = output_root / avi.with_suffix(".mp4").name
+
+    log(
+        f"[{index}/{len(avi_files)}] "
+        f"{avi.name}"
+    )
+
+
+    # Skip existing MP4
+    if mp4.exists():
+
+        size_mb = mp4.stat().st_size / (1024**2)
+
+        log(
+            f"SKIP: already exists "
+            f"({size_mb:.2f} MB)"
+        )
+
+        skipped += 1
+        continue
+
+
+    start = time.time()
+
+
+    command = [
+        FFMPEG,
+
+        "-i",
+        str(avi),
+
+        "-c:v",
+        "libx264",
+
+        "-b:v",
+        "30M",
+
+        "-maxrate",
+        "35M",
+
+        "-bufsize",
+        "60M",
+
+        "-pix_fmt",
+        "yuv420p",
+
+        "-movflags",
+        "+faststart",
+
+        "-an",
+
+        "-y",
+
+        str(mp4)
+    ]
+
+
+    log("Starting FFmpeg")
+
+    result = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+
+
+    elapsed = time.time() - start
+
+
+    if (
+        result.returncode == 0
+        and mp4.exists()
+        and mp4.stat().st_size > 0
+    ):
+
+        size_mb = mp4.stat().st_size / (1024**2)
+
+        log(
+            f"SUCCESS: {mp4.name} | "
+            f"{size_mb:.2f} MB | "
+            f"{elapsed/60:.2f} min"
+        )
+
+        successful += 1
+
+
+    else:
+
+        log(f"FAILED: {avi.name}")
+
+        log(
+            result.stderr[-3000:]
+        )
+
+        failed += 1
+
+
+log("--------------------------------")
+log("Conversion completed")
+log(f"Successful: {successful}")
+log(f"Skipped:    {skipped}")
+log(f"Failed:     {failed}")
