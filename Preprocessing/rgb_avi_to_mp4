@@ -11,10 +11,10 @@ import time
 FFMPEG = r"C:\Users\User\Downloads\ffmpeg-7.1-full_build\bin\ffmpeg.exe"
 
 # Input folder containing AVI files
-input_root = Path(r"D:\Data_RGB\catherine\first")
+input_root = Path(r"E:\Data_RGB\maxime\first")
 
 # Separate output folder for MP4 files
-output_root = Path(r"D:\Data_RGB\catherine\first_mp4")
+output_root = Path(r"E:\Data_RGB\maxime\first_mp4_4k_40fps")
 
 
 # -----------------------------
